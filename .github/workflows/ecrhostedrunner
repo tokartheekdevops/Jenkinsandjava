@@ -1,0 +1,73 @@
+name: Build Push Docker Image to ECR
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: 792462246065.dkr.ecr.us-east-1.amazonaws.com/githubactions/private
+  IMAGE_TAG: ${{ github.run_number }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify Java
+        run: java -version
+
+      - name: Verify Maven
+        run: mvn -version
+
+      - name: Verify Docker
+        run: docker --version
+
+      - name: Verify AWS CLI
+        run: aws --version
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::792462246065:role/GitHubActionsECRRole
+          aws-region: us-east-1
+
+      - name: Verify IAM Role
+        run: aws sts get-caller-identity
+
+      - name: Build WAR
+        run: mvn clean package
+
+      - name: Login To ECR
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | \
+          docker login --username AWS --password-stdin \
+          792462246065.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+          -t $ECR_REPO:$IMAGE_TAG \
+          -t $ECR_REPO:latest .
+
+      - name: Push Docker Image
+        run: |
+          docker push $ECR_REPO:$IMAGE_TAG
+          docker push $ECR_REPO:latest
+
+      - name: Show Docker Images
+        run: docker images
+
+      - name: Success
+        if: success()
+        run: echo "Docker image pushed successfully to Amazon ECR."
