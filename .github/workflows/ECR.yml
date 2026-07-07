@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-1
   ECR_REPO: 792462246065.dkr.ecr.ap-south-1.amazonaws.com/githubactions/private
   IMAGE_TAG: ${{ github.run_number }}
 
@@ -58,7 +58,7 @@ jobs:
         run: |
           aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin \
-          792462246065.dkr.ecr.us-east-1.amazonaws.com
+          792462246065.dkr.ecr.ap-south-1.amazonaws.com
 
       - name: Build Docker Image
         run: |
