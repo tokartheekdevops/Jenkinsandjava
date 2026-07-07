@@ -7,7 +7,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPO: 792462246065.dkr.ecr.us-east-1.amazonaws.com/githubactions/private
+  ECR_REPO: 792462246065.dkr.ecr.ap-south-1.amazonaws.com/githubactions/private
   IMAGE_TAG: ${{ github.run_number }}
 
 permissions:
