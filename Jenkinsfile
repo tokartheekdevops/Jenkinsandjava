@@ -13,12 +13,6 @@ pipeline {
         APP_NAME = 'javajenkins'
 
         // =========================================================
-        // GITHUB
-        // =========================================================
-
-        GIT_REPO = 'https://github.com/tokartheekdevops/Jenkinsandjava.git'
-
-        // =========================================================
         // AWS / ECR
         // =========================================================
 
@@ -32,7 +26,7 @@ pipeline {
 
         ECR_REPOSITORY = '931527443397.dkr.ecr.ap-south-1.amazonaws.com/javajenkins'
 
-        // Jenkins BUILD_NUMBER creates a unique image
+        // Jenkins build number = unique image tag
         IMAGE_TAG = "${BUILD_NUMBER}"
 
         IMAGE_URI = "931527443397.dkr.ecr.ap-south-1.amazonaws.com/javajenkins:${BUILD_NUMBER}"
@@ -41,18 +35,15 @@ pipeline {
         // KUBERNETES
         // =========================================================
 
-        K8S_NAMESPACE = 'default'
+        K8S_NAMESPACE = 'shoprupee'
 
-        // Jenkins -> Credentials
-        // Kind: Secret file
-        // ID: shoprupee-kubeconfig
+        // Jenkins credential:
+        // Kind = Secret file
+        // ID   = shoprupee-kubeconfig
 
         KUBECONFIG_CREDENTIAL_ID = 'shoprupee-kubeconfig'
 
-        // =========================================================
-        // KUBERNETES YAML FILES
-        // =========================================================
-
+        // Kubernetes YAML files in GitHub
         DEPLOYMENT_FILE = 'deploymentjava.yaml'
 
         SERVICE_FILE = 'servicelb.yaml'
@@ -62,7 +53,7 @@ pipeline {
     stages {
 
         // =========================================================
-        // 1. VERIFY JENKINS AGENT
+        // 1. VERIFY AGENT
         // =========================================================
 
         stage('Verify Agent') {
@@ -76,11 +67,12 @@ pipeline {
                     echo "JENKINS AGENT"
                     echo "======================================"
 
+                    echo ""
                     echo "Hostname:"
                     hostname
 
                     echo ""
-                    echo "Agent:"
+                    echo "Jenkins Node:"
                     echo "$NODE_NAME"
 
                     echo ""
@@ -138,7 +130,7 @@ pipeline {
 
 
         // =========================================================
-        // 3. VERIFY SOURCE CODE
+        // 3. VERIFY SOURCE
         // =========================================================
 
         stage('Verify Source') {
@@ -157,21 +149,26 @@ pipeline {
                     pwd
 
                     echo ""
-                    echo "Files:"
+                    echo "Repository files:"
                     ls -la
 
                     echo ""
-                    echo "Java source files:"
+                    echo "Java source:"
                     find src -type f
 
                     echo ""
-                    echo "Kubernetes files:"
+                    echo "Checking Kubernetes files..."
 
-                    test -f deploymentjava.yaml
-                    test -f servicelb.yaml
+                    test -f "$DEPLOYMENT_FILE"
+                    test -f "$SERVICE_FILE"
 
-                    ls -lh deploymentjava.yaml
-                    ls -lh servicelb.yaml
+                    echo ""
+                    echo "Deployment file:"
+                    ls -lh "$DEPLOYMENT_FILE"
+
+                    echo ""
+                    echo "Service file:"
+                    ls -lh "$SERVICE_FILE"
 
                     echo ""
                     echo "Source verification successful."
@@ -196,13 +193,16 @@ pipeline {
                     echo "======================================"
 
                     aws sts get-caller-identity
+
+                    echo ""
+                    echo "AWS IAM authentication successful."
                 '''
             }
         }
 
 
         // =========================================================
-        // 5. RUN JUNIT TESTS
+        // 5. JUNIT TEST
         // =========================================================
 
         stage('JUnit Tests') {
@@ -248,10 +248,14 @@ pipeline {
                     echo "BUILDING JAVA WAR"
                     echo "======================================"
 
-                    mvn clean -B -Denforcer.skip=true package -DskipTests
+                    mvn clean \
+                        -B \
+                        -Denforcer.skip=true \
+                        package \
+                        -DskipTests
 
                     echo ""
-                    echo "Generated WAR files:"
+                    echo "Generated WAR:"
 
                     ls -lh target/*.war
                 '''
@@ -302,7 +306,8 @@ pipeline {
                     echo "BUILDING DOCKER IMAGE"
                     echo "======================================"
 
-                    echo "Image:"
+                    echo ""
+                    echo "Image URI:"
                     echo "$IMAGE_URI"
 
                     docker build \
@@ -310,7 +315,7 @@ pipeline {
                         .
 
                     echo ""
-                    echo "Docker image created:"
+                    echo "Docker image created successfully."
 
                     docker images "$ECR_REPOSITORY"
                 '''
@@ -336,7 +341,10 @@ pipeline {
                     docker push "$IMAGE_URI"
 
                     echo ""
-                    echo "Image pushed successfully:"
+                    echo "Image pushed successfully."
+
+                    echo ""
+                    echo "Image:"
                     echo "$IMAGE_URI"
                 '''
             }
@@ -344,7 +352,7 @@ pipeline {
 
 
         // =========================================================
-        // 10. CONFIGURE KUBERNETES ACCESS
+        // 10. KUBERNETES AUTHENTICATION
         // =========================================================
 
         stage('Configure Kubernetes Access') {
@@ -369,15 +377,23 @@ pipeline {
 
                         echo ""
                         echo "Current Kubernetes context:"
+
                         kubectl config current-context
 
                         echo ""
-                        echo "Kubernetes cluster:"
-                        kubectl cluster-info
+                        echo "Kubernetes user:"
+
+                        kubectl config view \
+                            --minify \
+                            -o jsonpath='{.contexts[0].context.user}'
 
                         echo ""
-                        echo "Kubernetes nodes:"
-                        kubectl get nodes
+
+                        echo ""
+                        echo "Testing application namespace access:"
+
+                        kubectl get pods \
+                            -n "$K8S_NAMESPACE"
 
                         echo ""
                         echo "Kubernetes authentication successful."
@@ -388,7 +404,7 @@ pipeline {
 
 
         // =========================================================
-        // 11. VERIFY KUBERNETES RBAC
+        // 11. VERIFY RBAC
         // =========================================================
 
         stage('Verify Kubernetes RBAC') {
@@ -413,27 +429,44 @@ pipeline {
 
                         echo ""
                         echo "Can get pods:"
+
                         kubectl auth can-i get pods \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
+                        echo "Can get deployments:"
+
+                        kubectl auth can-i get deployments \
+                            -n "$K8S_NAMESPACE"
+
+                        echo ""
                         echo "Can create deployments:"
+
                         kubectl auth can-i create deployments \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
                         echo "Can update deployments:"
+
                         kubectl auth can-i update deployments \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
                         echo "Can patch deployments:"
+
                         kubectl auth can-i patch deployments \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
                         echo "Can create services:"
+
                         kubectl auth can-i create services \
+                            -n "$K8S_NAMESPACE"
+
+                        echo ""
+                        echo "Can get services:"
+
+                        kubectl auth can-i get services \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
@@ -468,9 +501,15 @@ pipeline {
 
                         export KUBECONFIG="$KUBECONFIG_FILE"
 
+                        echo ""
+                        echo "Validating Deployment:"
+
                         kubectl apply \
                             --dry-run=client \
                             -f "$DEPLOYMENT_FILE"
+
+                        echo ""
+                        echo "Validating Service:"
 
                         kubectl apply \
                             --dry-run=client \
@@ -485,7 +524,7 @@ pipeline {
 
 
         // =========================================================
-        // 13. DEPLOY KUBERNETES MANIFESTS
+        // 13. DEPLOY TO KUBERNETES
         // =========================================================
 
         stage('Deploy to Kubernetes') {
@@ -529,7 +568,99 @@ pipeline {
 
 
         // =========================================================
-        // 14. UPDATE DEPLOYMENT IMAGE
+        // 14. FIND DEPLOYMENT
+        // =========================================================
+
+        stage('Find Deployment') {
+
+            steps {
+
+                withCredentials([
+                    file(
+                        credentialsId: "${KUBECONFIG_CREDENTIAL_ID}",
+                        variable: 'KUBECONFIG_FILE'
+                    )
+                ]) {
+
+                    script {
+
+                        sh '''
+                            set -e
+
+                            export KUBECONFIG="$KUBECONFIG_FILE"
+
+                            echo "======================================"
+                            echo "KUBERNETES DEPLOYMENT"
+                            echo "======================================"
+
+                            kubectl get deployments \
+                                -n "$K8S_NAMESPACE" \
+                                -o wide
+                        '''
+
+                        env.DEPLOYMENT_NAME = sh(
+                            script: '''
+                                export KUBECONFIG="$KUBECONFIG_FILE"
+
+                                kubectl get deployments \
+                                    -n "$K8S_NAMESPACE" \
+                                    -o jsonpath='{.items[0].metadata.name}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        if (!env.DEPLOYMENT_NAME) {
+                            error("No Kubernetes deployment found in namespace ${K8S_NAMESPACE}")
+                        }
+
+                        echo "Deployment found: ${env.DEPLOYMENT_NAME}"
+                    }
+                }
+            }
+        }
+
+
+        // =========================================================
+        // 15. FIND CONTAINER
+        // =========================================================
+
+        stage('Find Container') {
+
+            steps {
+
+                withCredentials([
+                    file(
+                        credentialsId: "${KUBECONFIG_CREDENTIAL_ID}",
+                        variable: 'KUBECONFIG_FILE'
+                    )
+                ]) {
+
+                    script {
+
+                        env.CONTAINER_NAME = sh(
+                            script: '''
+                                export KUBECONFIG="$KUBECONFIG_FILE"
+
+                                kubectl get deployment "$DEPLOYMENT_NAME" \
+                                    -n "$K8S_NAMESPACE" \
+                                    -o jsonpath='{.spec.template.spec.containers[0].name}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        if (!env.CONTAINER_NAME) {
+                            error("No container found in deployment ${env.DEPLOYMENT_NAME}")
+                        }
+
+                        echo "Container found: ${env.CONTAINER_NAME}"
+                    }
+                }
+            }
+        }
+
+
+        // =========================================================
+        // 16. UPDATE IMAGE
         // =========================================================
 
         stage('Update Deployment Image') {
@@ -553,31 +684,24 @@ pipeline {
                         export KUBECONFIG="$KUBECONFIG_FILE"
 
                         echo ""
-                        echo "Finding deployment..."
-
-                        DEPLOYMENT_NAME=$(kubectl get deployments \
-                            -n "$K8S_NAMESPACE" \
-                            -o jsonpath='{.items[0].metadata.name}')
-
-                        if [ -z "$DEPLOYMENT_NAME" ]; then
-                            echo "ERROR: No deployment found."
-                            exit 1
-                        fi
-
                         echo "Deployment:"
                         echo "$DEPLOYMENT_NAME"
 
                         echo ""
-                        echo "Updating image to:"
+                        echo "Container:"
+                        echo "$CONTAINER_NAME"
+
+                        echo ""
+                        echo "New image:"
                         echo "$IMAGE_URI"
 
                         kubectl set image \
                             deployment/"$DEPLOYMENT_NAME" \
-                            "*=$IMAGE_URI" \
+                            "$CONTAINER_NAME=$IMAGE_URI" \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
-                        echo "Deployment image updated successfully."
+                        echo "Deployment image updated."
                     '''
                 }
             }
@@ -585,7 +709,7 @@ pipeline {
 
 
         // =========================================================
-        // 15. ROLLING UPDATE
+        // 17. ROLLING UPDATE
         // =========================================================
 
         stage('Rolling Update') {
@@ -608,12 +732,8 @@ pipeline {
 
                         export KUBECONFIG="$KUBECONFIG_FILE"
 
-                        DEPLOYMENT_NAME=$(kubectl get deployments \
-                            -n "$K8S_NAMESPACE" \
-                            -o jsonpath='{.items[0].metadata.name}')
-
                         echo ""
-                        echo "Waiting for deployment:"
+                        echo "Deployment:"
                         echo "$DEPLOYMENT_NAME"
 
                         kubectl rollout status \
@@ -630,7 +750,7 @@ pipeline {
 
 
         // =========================================================
-        // 16. VERIFY DEPLOYMENT
+        // 18. VERIFY DEPLOYMENT
         // =========================================================
 
         stage('Verify Deployment') {
@@ -653,7 +773,8 @@ pipeline {
 
                         export KUBECONFIG="$KUBECONFIG_FILE"
 
-                        kubectl get deployments \
+                        kubectl get deployment \
+                            "$DEPLOYMENT_NAME" \
                             -n "$K8S_NAMESPACE" \
                             -o wide
 
@@ -669,7 +790,7 @@ pipeline {
 
 
         // =========================================================
-        // 17. VERIFY PODS
+        // 19. VERIFY PODS
         // =========================================================
 
         stage('Verify Pods') {
@@ -697,15 +818,16 @@ pipeline {
                             -o wide
 
                         echo ""
-                        echo "Checking pod status..."
+                        echo "Waiting for deployment availability..."
 
-                        NOT_READY=$(kubectl get pods \
+                        kubectl wait \
+                            --for=condition=available \
+                            deployment/"$DEPLOYMENT_NAME" \
                             -n "$K8S_NAMESPACE" \
-                            --no-headers \
-                            | awk '$2 !~ /^[0-9]+\\/\\1$/ {print}')
+                            --timeout=5m
 
                         echo ""
-                        echo "Pod verification completed."
+                        echo "Pods are available."
                     '''
                 }
             }
@@ -713,7 +835,7 @@ pipeline {
 
 
         // =========================================================
-        // 18. VERIFY SERVICE
+        // 20. VERIFY SERVICE
         // =========================================================
 
         stage('Verify Service') {
@@ -749,7 +871,7 @@ pipeline {
 
 
         // =========================================================
-        // 19. FINAL VERIFICATION
+        // 21. FINAL VERIFICATION
         // =========================================================
 
         stage('Final Verification') {
@@ -774,19 +896,31 @@ pipeline {
                         export KUBECONFIG="$KUBECONFIG_FILE"
 
                         echo ""
-                        echo "Deployments:"
-                        kubectl get deployments \
+                        echo "Deployment:"
+                        kubectl get deployment \
+                            "$DEPLOYMENT_NAME" \
                             -n "$K8S_NAMESPACE"
 
                         echo ""
                         echo "Pods:"
                         kubectl get pods \
-                            -n "$K8S_NAMESPACE"
+                            -n "$K8S_NAMESPACE" \
+                            -o wide
 
                         echo ""
                         echo "Services:"
                         kubectl get services \
-                            -n "$K8S_NAMESPACE"
+                            -n "$K8S_NAMESPACE" \
+                            -o wide
+
+                        echo ""
+                        echo "Current Image:"
+                        kubectl get deployment \
+                            "$DEPLOYMENT_NAME" \
+                            -n "$K8S_NAMESPACE" \
+                            -o jsonpath='{.spec.template.spec.containers[0].image}'
+
+                        echo ""
 
                         echo ""
                         echo "=========================================="
@@ -794,15 +928,27 @@ pipeline {
                         echo "=========================================="
 
                         echo ""
+                        echo "JUnit Tests       : PASSED"
+                        echo "Maven Build       : PASSED"
+                        echo "Docker Build      : PASSED"
+                        echo "ECR Push          : PASSED"
+                        echo "K8s Authentication: PASSED"
+                        echo "K8s RBAC          : PASSED"
+                        echo "K8s Deployment    : PASSED"
+                        echo "Rolling Update    : PASSED"
+                        echo "Pod Verification  : PASSED"
+                        echo "Service Check     : PASSED"
+
+                        echo ""
                         echo "Docker Image:"
                         echo "$IMAGE_URI"
 
                         echo ""
-                        echo "Kubernetes Namespace:"
+                        echo "Namespace:"
                         echo "$K8S_NAMESPACE"
 
                         echo ""
-                        echo "Deployment completed successfully."
+                        echo "=========================================="
                     '''
                 }
             }
@@ -826,12 +972,12 @@ pipeline {
 JUnit Tests        : PASSED
 Maven Build        : PASSED
 Docker Build       : PASSED
-ECR Push            : PASSED
-Kubernetes Auth     : PASSED
-Kubernetes RBAC     : PASSED
-Kubernetes Deploy   : PASSED
-Rolling Update      : PASSED
-Pod Verification   : PASSED
+ECR Push           : PASSED
+Kubernetes Auth    : PASSED
+Kubernetes RBAC    : PASSED
+Kubernetes Deploy  : PASSED
+Rolling Update     : PASSED
+Pod Verification  : PASSED
 Service Verification: PASSED
 
 ==========================================
