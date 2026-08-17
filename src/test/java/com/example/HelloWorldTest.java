@@ -10,7 +10,6 @@ public class HelloWorldTest {
     public void testHelloWorld() {
 
         String expected = "Hello, World!";
-
         String actual = "Hello, World!";
 
         assertEquals(expected, actual);
