@@ -1,0 +1,51 @@
+name: Jenkinsandjava ECR Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  ecr-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Run Maven tests
+        run: mvn clean test
+
+      - name: Build WAR
+        run: mvn clean package
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::931527443397:role/GitHubActionsECRRole
+          aws-region: ap-south-1
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t 931527443397.dkr.ecr.ap-south-1.amazonaws.com/javajenkinsgithub:${{ github.run_number }} .
+
+      - name: Push Docker image
+        run: |
+          docker push \
+            931527443397.dkr.ecr.ap-south-1.amazonaws.com/javajenkinsgithub:${{ github.run_number }}
