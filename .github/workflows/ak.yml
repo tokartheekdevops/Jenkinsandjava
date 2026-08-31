@@ -1,9 +1,7 @@
-name: Build and Push Docker Image to Amazon ECR
+name: Jenkinsandjava CI - ECR
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -11,127 +9,63 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  AWS_ACCOUNT_ID: "792462246065"
-  ECR_REPOSITORY: "tokartheek/devopsrepo"
-  IMAGE_TAG: ${{ github.run_number }}
+  AWS_ACCOUNT_ID: "931527443397"
+  ECR_REPOSITORY: javajenkinsgithub
 
 jobs:
-  build-and-push:
-
+  build-test-push:
+    name: Build, Test and Push to ECR
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Checkout Source Code
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "8"
+          cache: maven
 
-      - name: Verify Java
+      - name: Display Java version
         run: java -version
 
-      - name: Verify Maven
+      - name: Display Maven version
         run: mvn -version
 
-      - name: Verify Docker
-        run: docker --version
+      - name: Run unit tests
+        run: mvn clean test
 
-      - name: Verify AWS CLI
-        run: aws --version
-
-      ##################################################
-      # Configure AWS Credentials using OIDC
-      ##################################################
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::792462246065:role/GitHubActionsECRRole
-          aws-region: ap-south-1
-
-      - name: Verify AWS Identity
-        run: aws sts get-caller-identity
-
-      ##################################################
-      # Verify Repository Exists
-      ##################################################
-
-      - name: Verify ECR Repository
-        run: |
-          aws ecr describe-repositories \
-          --repository-names $ECR_REPOSITORY \
-          --region $AWS_REGION
-
-      ##################################################
-      # Build WAR
-      ##################################################
-
-      - name: Build WAR
+      - name: Package application
         run: mvn clean package
 
-      ##################################################
-      # Login to Amazon ECR
-      ##################################################
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::931527443397:role/GitHubActionsECRRole
+          aws-region: ap-south-1
+          audience: sts.amazonaws.com
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
 
       - name: Login to Amazon ECR
-        run: |
-          aws ecr get-login-password --region $AWS_REGION | \
-          docker login \
-          --username AWS \
-          --password-stdin \
-          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      ##################################################
-      # Build Docker Image
-      ##################################################
-
-      - name: Build Docker Image
+      - name: Build Docker image
         run: |
           docker build \
-            -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest \
-            .
+            -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }} .
 
-      ##################################################
-      # List Docker Images
-      ##################################################
-
-      - name: Verify Local Images
-        run: docker images
-
-      ##################################################
-      # Push Docker Images
-      ##################################################
-
-      - name: Push Docker Images
+      - name: Push Docker image to ECR
         run: |
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+          docker push \
+            $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }}
 
-      ##################################################
-      # Verify Image in ECR
-      ##################################################
-
-      - name: Verify Images in ECR
+      - name: Show image
         run: |
-          aws ecr list-images \
-            --repository-name $ECR_REPOSITORY \
-            --region $AWS_REGION
-
-      ##################################################
-      # Success Message
-      ##################################################
-
-      - name: Pipeline Completed
-        run: |
-          echo "====================================="
-          echo "Docker Image Successfully Pushed"
-          echo "Repository : $ECR_REPOSITORY"
-          echo "Region     : $AWS_REGION"
-          echo "Tag        : $IMAGE_TAG"
-          echo "Latest Tag : latest"
-          echo "====================================="
+          echo "Image pushed:"
+          echo "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }}"
